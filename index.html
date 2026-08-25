@@ -2112,14 +2112,28 @@
         });
       }
 
-      document.addEventListener("mousemove", function (event) {
-        if (window.innerWidth < 768) return;
-        const x = (event.clientX / window.innerWidth - 0.5) * 20;
-        const y = (event.clientY / window.innerHeight - 0.5) * 20;
+      function handleScreenMovement(clientX, clientY) {
+        const x = (clientX / window.innerWidth - 0.5) * 20;
+        const y = (clientY / window.innerHeight - 0.5) * 20;
+
         document.querySelectorAll(".peacock").forEach(function (element) {
-          element.style.transform = `translate(${x}px, ${y}px)`;
+          element.style.transform = `translate3d(${x}px, ${y}px, 0)`;
         });
+      }
+
+      document.addEventListener("mousemove", function (event) {
+        handleScreenMovement(event.clientX, event.clientY);
       });
+
+      document.addEventListener(
+        "touchmove",
+        function (event) {
+          if (!event.touches || !event.touches.length) return;
+          const touch = event.touches[0];
+          handleScreenMovement(touch.clientX, touch.clientY);
+        },
+        { passive: true },
+      );
 
       document.addEventListener("keydown", function (event) {
         if (event.key === "Escape") closeThankYou();
@@ -2237,7 +2251,7 @@
 
       (function () {
         const canvas = document.getElementById("sparkleTrail");
-        if (!canvas || prefersReducedMotion || window.innerWidth < 768) return;
+        if (!canvas || prefersReducedMotion) return;
         const ctx = canvas.getContext("2d");
         let sparkles = [];
 
@@ -2248,17 +2262,34 @@
         resizeSparkleCanvas();
         window.addEventListener("resize", resizeSparkleCanvas);
 
-        window.addEventListener("mousemove", function (event) {
-          for (let i = 0; i < 2; i++) {
+        function createSparkles(clientX, clientY) {
+          for (let i = 0; i < 3; i++) {
             sparkles.push({
-              x: event.clientX + (Math.random() - 0.5) * 12,
-              y: event.clientY + (Math.random() - 0.5) * 12,
-              size: 1 + Math.random() * 2.5,
+              x: clientX + (Math.random() - 0.5) * 16,
+              y: clientY + (Math.random() - 0.5) * 16,
+              size: 1 + Math.random() * 2.8,
               life: 1,
             });
           }
-          if (sparkles.length > 160) sparkles = sparkles.slice(-160);
+
+          if (sparkles.length > 220) {
+            sparkles = sparkles.slice(-220);
+          }
+        }
+
+        window.addEventListener("mousemove", function (event) {
+          createSparkles(event.clientX, event.clientY);
         });
+
+        window.addEventListener(
+          "touchmove",
+          function (event) {
+            if (!event.touches.length) return;
+            const touch = event.touches[0];
+            createSparkles(touch.clientX, touch.clientY);
+          },
+          { passive: true },
+        );
 
         function renderSparkles() {
           ctx.clearRect(0, 0, canvas.width, canvas.height);
@@ -2282,21 +2313,49 @@
         renderSparkles();
       })();
 
-      if (
-        !prefersReducedMotion &&
-        window.matchMedia("(hover: hover)").matches
-      ) {
+      if (!prefersReducedMotion) {
         document.querySelectorAll(".tilt-card").forEach(function (card) {
-          card.addEventListener("mousemove", function (event) {
+          function moveCard(clientX, clientY) {
             const rect = card.getBoundingClientRect();
-            const px = (event.clientX - rect.left) / rect.width - 0.5;
-            const py = (event.clientY - rect.top) / rect.height - 0.5;
-            card.style.transform = `perspective(700px) rotateX(${(-py * 10).toFixed(2)}deg) rotateY(${(px * 10).toFixed(2)}deg) translateY(-6px)`;
+            const px = (clientX - rect.left) / rect.width - 0.5;
+            const py = (clientY - rect.top) / rect.height - 0.5;
+            const rotateX = (-py * 10).toFixed(2);
+            const rotateY = (px * 10).toFixed(2);
+
+            card.style.transform = `perspective(700px) rotateX(${rotateX}deg) rotateY(${rotateY}deg) translateY(-6px)`;
+          }
+
+          card.addEventListener("mousemove", function (event) {
+            moveCard(event.clientX, event.clientY);
           });
-          card.addEventListener("mouseleave", function () {
+
+          card.addEventListener(
+            "touchmove",
+            function (event) {
+              if (!event.touches.length) return;
+              const touch = event.touches[0];
+              const rect = card.getBoundingClientRect();
+
+              if (
+                touch.clientX >= rect.left &&
+                touch.clientX <= rect.right &&
+                touch.clientY >= rect.top &&
+                touch.clientY <= rect.bottom
+              ) {
+                moveCard(touch.clientX, touch.clientY);
+              }
+            },
+            { passive: true },
+          );
+
+          function resetCard() {
             card.style.transform =
               "perspective(700px) rotateX(0deg) rotateY(0deg) translateY(0)";
-          });
+          }
+
+          card.addEventListener("mouseleave", resetCard);
+          card.addEventListener("touchend", resetCard);
+          card.addEventListener("touchcancel", resetCard);
         });
       }
 
@@ -2321,31 +2380,71 @@
 
       (function () {
         const stage = document.getElementById("cartoonStage");
-        if (
-          !stage ||
-          prefersReducedMotion ||
-          !window.matchMedia("(hover: hover)").matches
-        )
-          return;
+        if (!stage || prefersReducedMotion) return;
+
         const layers = stage.querySelectorAll(".cartoon-layer");
-        stage.addEventListener("mousemove", function (event) {
+        let targetX = 0;
+        let targetY = 0;
+        let currentX = 0;
+        let currentY = 0;
+
+        function updateTarget(clientX, clientY) {
           const rect = stage.getBoundingClientRect();
-          const x =
-            (event.clientX - rect.left - rect.width / 2) / (rect.width / 2);
-          const y =
-            (event.clientY - rect.top - rect.height / 2) / (rect.height / 2);
+          const centerX = rect.left + rect.width / 2;
+          const centerY = rect.top + rect.height / 2;
+
+          targetX = (clientX - centerX) / (rect.width / 2);
+          targetY = (clientY - centerY) / (rect.height / 2);
+
+          targetX = Math.max(-1, Math.min(1, targetX));
+          targetY = Math.max(-1, Math.min(1, targetY));
+        }
+
+        function animate() {
+          currentX += (targetX - currentX) * 0.08;
+          currentY += (targetY - currentY) * 0.08;
+
           layers.forEach(function (layer) {
             const depth = parseFloat(layer.dataset.depth) || 30;
-            const moveX = x * depth;
-            const moveY = y * (depth * 0.5);
-            layer.style.transform = `translate3d(${moveX}px, ${moveY}px, 0) rotateY(${(x * 4).toFixed(2)}deg)`;
+            const moveX = currentX * depth;
+            const moveY = currentY * (depth * 0.5);
+
+            layer.style.transform = `translate3d(${moveX}px, ${moveY}px, 0) rotateY(${(currentX * 4).toFixed(2)}deg)`;
           });
+
+          requestAnimationFrame(animate);
+        }
+
+        document.addEventListener("mousemove", function (event) {
+          updateTarget(event.clientX, event.clientY);
         });
-        stage.addEventListener("mouseleave", function () {
-          layers.forEach(function (layer) {
-            layer.style.transform = "translate3d(0,0,0) rotateY(0deg)";
-          });
+
+        document.addEventListener(
+          "touchmove",
+          function (event) {
+            if (!event.touches.length) return;
+            const touch = event.touches[0];
+            updateTarget(touch.clientX, touch.clientY);
+          },
+          { passive: true },
+        );
+
+        document.addEventListener("mouseleave", function () {
+          targetX = 0;
+          targetY = 0;
         });
+
+        document.addEventListener("touchend", function () {
+          targetX = 0;
+          targetY = 0;
+        });
+
+        document.addEventListener("touchcancel", function () {
+          targetX = 0;
+          targetY = 0;
+        });
+
+        animate();
       })();
     </script>
 
